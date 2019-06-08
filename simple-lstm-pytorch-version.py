@@ -32,6 +32,16 @@ from torch.nn import functional as F
 from tensorboardX import SummaryWriter
 
 
+# In[16]:
+
+
+if torch.cuda.is_available():
+    device = torch.device('cuda')
+else:
+    device = torch.device('cpu')
+
+print("using device: ", device)
+
 # In[9]:
 
 
@@ -42,7 +52,6 @@ def is_interactive():
 if not is_interactive():
     def nop(it, *a, **k):
         return it
-
     tqdm = nop
 
 
@@ -301,6 +310,7 @@ indexes = random.sample(range(len(train_val)), k=len(train_val)//10)
 val = train_val.loc[indexes, :]
 train = train_val.drop(indexes, axis=0)
 
+print("read in data")
 print("train size: ", len(train))
 print("validation size: ", len(val))
 print("test size: ", len(test))
@@ -321,18 +331,13 @@ x_test = preprocess(test['comment_text'])
 max_features = None
 
 
-# In[ ]:
-
-
-
-
-
 # In[35]:
 
-
+print("tokenizing text")
 tokenizer = text.Tokenizer()
 tokenizer.fit_on_texts(list(x_train) + list(x_test) + list(x_val)) # create an integer for every word
 
+print("converting words to indices")
 x_train = tokenizer.texts_to_sequences(x_train) # convert every text to a sequence of integers
 x_val = tokenizer.texts_to_sequences(x_val)
 x_test = tokenizer.texts_to_sequences(x_test)
@@ -348,39 +353,23 @@ max_features = max_features or len(tokenizer.word_index) + 1
 max_features
 
 
-# In[41]:
-
-
-print(x_train)
-
-
 # In[14]:
 
-
+print("building embedding matrix from crawl")
 crawl_matrix, unknown_words_crawl = build_matrix(tokenizer.word_index, CRAWL_EMBEDDING_PATH)
 print('n unknown words (crawl): ', len(unknown_words_crawl))
 
 
 # In[15]:
 
-
+print("building embedding matrix from glove")
 glove_matrix, unknown_words_glove = build_matrix(tokenizer.word_index, GLOVE_EMBEDDING_PATH)
 print('n unknown words (glove): ', len(unknown_words_glove))
 
 
-# In[16]:
-
-
-USE_GPU = True
-if USE_GPU and torch.cuda.is_available():
-    device = torch.device('cuda')
-else:
-    device = torch.device('cpu')
-
-
 # In[17]:
 
-
+print("concatenating two embedding matrices")
 embedding_matrix = np.concatenate([crawl_matrix, glove_matrix], axis=-1)
 embedding_matrix.shape
 
@@ -391,18 +380,12 @@ gc.collect()
 
 # In[18]:
 
-
+print("converting data into tensor")
 x_train_torch = torch.tensor(x_train, dtype=torch.long).cuda()
 x_val_torch = torch.tensor(x_val, dtype=torch.long).cuda()
 x_test_torch = torch.tensor(x_test, dtype=torch.long).cuda()
 y_train_torch = torch.tensor(np.hstack([y_train[:, np.newaxis], y_aux_train]), dtype=torch.float32).cuda()
 y_val_torch = torch.tensor(np.hstack([y_val[:, np.newaxis], y_aux_val]), dtype=torch.float32).cuda()
-
-
-# In[19]:
-
-
-print(torch.cuda.is_available())
 
 
 # # Training
