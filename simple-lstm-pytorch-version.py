@@ -218,7 +218,8 @@ def train_model(model, train, val, test, loss_fn, output_dim, lr=0.001,
         test_preds = np.zeros((len(test), output_dim))
 
         for i, x_batch in enumerate(test_loader):
-            y_pred = sigmoid(model(*x_batch).detach().cpu().numpy())
+            x_batch = x_batch[0].to("cuda")
+            y_pred = sigmoid(model(x_batch).detach().cpu().numpy())
 
             test_preds[i * batch_size:(i+1) * batch_size, :] = y_pred
 
@@ -461,7 +462,7 @@ train = train_val.drop(indexes, axis=0)
 cleanpre = args.clean_pre
 
 if (cleanpre):
-    x_train = clean_preprocss(train['comment_text'])
+    x_train = clean_preprocess(train['comment_text'])
     x_val = clean_preprocess(val['comment_text'])
     x_test = clean_preprocess(test['comment_text'])
 else:
