@@ -1,23 +1,6 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-
-# # Preface
-
-# This kernel is a PyTorch version of the [Simple LSTM kernel](https://www.kaggle.com/thousandvoices/simple-lstm). All credit for architecture and preprocessing goes to @thousandvoices.
-# There is a lot of discussion whether Keras, PyTorch, Tensorflow or the CUDA C API is best. But specifically between the PyTorch and Keras version of the simple LSTM architecture, there are 2 clear advantages of PyTorch:
-# - Speed. The PyTorch version runs about 20 minutes faster.
-# - Determinism. The PyTorch version is fully deterministic. Especially when it gets harder to improve your score later in the competition, determinism is very important.
-# 
-# I was surprised to see that PyTorch is that much faster, so I'm not completely sure the steps taken are exactly the same. If you see any difference, we can discuss it in the comments :)
-# 
-# The most likely reason the score of this kernel is higher than the @thousandvoices version is that the optimizer is not reinitialized after every epoch and thus the parameter-specific learning rates of Adam are not discarded after every epoch. That is the only difference between the kernels that is intended.
-
-# # Imports & Utility functions
-
-# In[8]:
-
-
 import numpy as np
 import pandas as pd
 import os
@@ -31,7 +14,6 @@ from torch import nn
 from torch.utils import data
 from torch.nn import functional as F
 from tensorboardX import SummaryWriter
-
 import argparse
 
 parser = argparse.ArgumentParser(description='Process some integers.')
@@ -44,7 +26,7 @@ parser.add_argument('--epoch', type = int, default = 5,
 parser.add_argument('--lr', type = float, default = 0.001,
                    help='learning rate')
 args = parser.parse_args()
-print('using cuda', torch.cuda.is_available())
+
 
 # In[ ]:
 
@@ -61,7 +43,6 @@ stop_words.extend(nltk_words)
 stop_words = set(stop_words)
 delete_stop_words = True
 
-
 def is_interactive():
    return 'SHLVL' not in os.environ
 
@@ -69,12 +50,10 @@ if not is_interactive():
     def nop(it, *a, **k):
         return it
 
-
     tqdm = nop
 
 
 # In[30]:
-
 
 
 # record on tensorboard
@@ -84,6 +63,7 @@ if not os.path.exists(save_dir_tb):
 tbx = SummaryWriter(save_dir_tb)
 
 
+# In[6]:
 
 
 def seed_everything(seed=1234):
@@ -96,6 +76,7 @@ def seed_everything(seed=1234):
 seed_everything()
 
 
+# In[7]:
 
 
 CRAWL_EMBEDDING_PATH = '../datasets/crawl-300d-2M.vec'
@@ -106,6 +87,7 @@ DENSE_HIDDEN_UNITS = 4 * LSTM_UNITS
 MAX_LEN = 220
 
 
+# In[8]:
 
 
 # convert vector to an array
@@ -132,9 +114,7 @@ def build_matrix(word_index, path):
     return embedding_matrix, unknown_words
 
 
-
 # In[32]:
-
 
 
 def sigmoid(x):
@@ -142,14 +122,12 @@ def sigmoid(x):
 
 def accuracy(y_pred, y_true):
     pred = torch.sigmoid(y_pred)
-
     pred[pred > 0.5] = 1
     pred[pred <= 0.5] = 0
     acc_general = torch.mean((pred == y_true).float()).item()
     acc_toxic = torch.mean((pred[y_true == 1] == 1).float()).item()
     acc_nontoxic = torch.mean((pred[y_true == 0] == 0).float()).item()
     return acc_general, acc_toxic, acc_nontoxic
-
 
 def train_model(model, train, val, test, loss_fn, output_dim, lr=0.001,
                 batch_size=512, n_epochs=4,
@@ -166,7 +144,6 @@ def train_model(model, train, val, test, loss_fn, output_dim, lr=0.001,
     all_test_preds = []
     checkpoint_weights = [2 ** epoch for epoch in range(n_epochs)]
     step = 0
-
 
     for epoch in range(n_epochs):
         start_time = time.time()
@@ -189,7 +166,6 @@ def train_model(model, train, val, test, loss_fn, output_dim, lr=0.001,
             loss = loss_fn(y_pred, y_batch)
 
             weights = torch.zeros(y_batch.size()).cuda()
-
             weights[y_batch[:, 0] > 0.5] = 0.9
             weights[y_batch[:, 0] < 0.5] = 0.1
             loss_weighted = (loss * weights).mean()
@@ -201,13 +177,11 @@ def train_model(model, train, val, test, loss_fn, output_dim, lr=0.001,
             epoch_loss += loss_weighted.item() / len(train_loader)
             batch_loss = loss_weighted.item()
             with torch.no_grad():
-
                 acc, acc_toxic, acc_nontoxic = accuracy(y_pred[:, 0], y_batch[:, 0])
             tbx.add_scalar('train/loss', batch_loss, step)
             tbx.add_scalar('train/acc', acc, step)
             tbx.add_scalar('train/acc_toxic', acc_toxic, step)
             tbx.add_scalar('train/acc_nontoxic', acc_nontoxic, step)
-
 
             batches += 1
             step += batch_size
@@ -216,7 +190,6 @@ def train_model(model, train, val, test, loss_fn, output_dim, lr=0.001,
                 model.eval()
                 with torch.no_grad():
                     val_acc = 0
-
                     val_acc_toxic = 0
                     val_acc_nontoxic = 0
                     val_loss = 0
@@ -228,12 +201,10 @@ def train_model(model, train, val, test, loss_fn, output_dim, lr=0.001,
                         y_pred = model(x_batch)
                         loss = loss_fn(y_pred, y_batch)
                         weights = torch.zeros(y_batch.size()).cuda()
-
                         weights[y_batch[:, 0] > 0.5] = 0.9
                         weights[y_batch[:, 0] < 0.5] = 0.1
                         loss_weighted = (loss * weights).mean()
                         val_loss += loss_weighted.item() / len(val_loader)
-
                         val_acc += accuracy(y_pred[:, 0], y_batch[:, 0])[0] / len(val_loader)
                         val_acc_toxic += accuracy(y_pred[:, 0], y_batch[:, 0])[1] / len(val_loader)
                         val_acc_nontoxic += accuracy(y_pred[:, 0], y_batch[:, 0])[2] / len(val_loader)
@@ -247,8 +218,7 @@ def train_model(model, train, val, test, loss_fn, output_dim, lr=0.001,
         test_preds = np.zeros((len(test), output_dim))
 
         for i, x_batch in enumerate(test_loader):
-            x_batch = x_batch[0].to("cuda")
-            y_pred = sigmoid(model(x_batch).detach().cpu().numpy())
+            y_pred = sigmoid(model(*x_batch).detach().cpu().numpy())
 
             test_preds[i * batch_size:(i+1) * batch_size, :] = y_pred
 
@@ -258,7 +228,6 @@ def train_model(model, train, val, test, loss_fn, output_dim, lr=0.001,
               epoch + 1, n_epochs, epoch_loss, elapsed_time))
 
     if enable_checkpoint_ensemble:
-
         test_preds = np.average(all_test_preds, weights=checkpoint_weights, axis=0)
     else:
         test_preds = all_test_preds[-1]
@@ -267,7 +236,6 @@ def train_model(model, train, val, test, loss_fn, output_dim, lr=0.001,
 
 
 # In[10]:
-
 
 
 class SpatialDropout(nn.Dropout2d):
@@ -284,13 +252,10 @@ class NeuralNet(nn.Module):
         super(NeuralNet, self).__init__()
         embed_size = embedding_matrix.shape[1]
 
-
-
         self.embedding = nn.Embedding(max_features, embed_size)
         self.embedding.weight = nn.Parameter(torch.tensor(embedding_matrix, dtype=torch.float32))
         self.embedding.weight.requires_grad = False
         self.embedding_dropout = SpatialDropout(0.3)
-
 
         self.lstm1 = nn.LSTM(embed_size, LSTM_UNITS, bidirectional=True, batch_first=True)
         self.lstm2 = nn.LSTM(LSTM_UNITS * 2, LSTM_UNITS, bidirectional=True, batch_first=True)
@@ -308,12 +273,10 @@ class NeuralNet(nn.Module):
         h_lstm1, _ = self.lstm1(h_embedding)
         h_lstm2, _ = self.lstm2(h_lstm1)
 
-
         # global average pooling
         avg_pool = torch.mean(h_lstm2, 1)
         # global max pooling
         max_pool, _ = torch.max(h_lstm2, 1)
-
 
         h_conc = torch.cat((max_pool, avg_pool), 1)
         h_conc_linear1  = F.relu(self.linear1(h_conc))
@@ -345,7 +308,6 @@ class NeuralNet(nn.Module):
 #     return data
 
 def preprocess(data,delete_stop_words=False):
-
     '''
     Credit goes to https://www.kaggle.com/gpreda/jigsaw-fast-compact-solution
     '''
@@ -354,7 +316,6 @@ def preprocess(data,delete_stop_words=False):
         for p in punct:
             text = text.replace(p, ' ')
         return text
-
 
     def remove_stop_words(x):
         output = ""
@@ -500,7 +461,7 @@ train = train_val.drop(indexes, axis=0)
 cleanpre = args.clean_pre
 
 if (cleanpre):
-    x_train = clean_preprocess(train['comment_text'])
+    x_train = clean_preprocss(train['comment_text'])
     x_val = clean_preprocess(val['comment_text'])
     x_test = clean_preprocess(test['comment_text'])
 else:
@@ -518,9 +479,7 @@ y_aux_val = val[['target', 'severe_toxicity', 'obscene', 'identity_attack', 'ins
 # In[13]:
 
 
-
 max_features = None
-
 
 
 # In[14]:
@@ -535,7 +494,6 @@ x_test = tokenizer.texts_to_sequences(x_test)
 x_train = sequence.pad_sequences(x_train, maxlen=MAX_LEN) # pad every sequence to make them of the same length
 x_val = sequence.pad_sequences(x_val, maxlen=MAX_LEN)
 x_test = sequence.pad_sequences(x_test, maxlen=MAX_LEN)
-
 
 
 # In[15]:
@@ -570,7 +528,6 @@ del glove_matrix
 gc.collect()
 
 
-
 # In[19]:
 
 
@@ -589,7 +546,6 @@ val_dataset = data.TensorDataset(x_val_torch, y_val_torch)
 test_dataset = data.TensorDataset(x_test_torch)
 
 
-
 # In[ ]:
 
 
@@ -600,7 +556,6 @@ test_preds = train_model(model, train_dataset, val_dataset, test_dataset,n_epoch
 
 
 # In[ ]:
-
 
 
 submission = pd.DataFrame.from_dict({
@@ -620,12 +575,10 @@ submission.to_csv('submission.csv', index=False)
 # - Try to reduce the number of words that are not found in the embeddings. At the moment, around 170k words are not found. We can take some steps to decrease this amount, for example trying to find a vector for a processed (capitalized, stemmed, ...) version of the word when the vector for the regular word can not be found. See the [3rd place solution](https://www.kaggle.com/wowfattie/3rd-place) of the quora competition for an excellent implementation of this.
 # - Try cyclic learning rate (CLR). I have found CLR to almost always improve my network recently compared to the default parameters for Adam. In this case, we are already using a learning rate scheduler, so this might not be the case. But it is still worth to try it out. See for example my [my other PyTorch kernel](https://www.kaggle.com/bminixhofer/deterministic-neural-networks-using-pytorch) for an implementation of CLR in PyTorch.
 # - Use sequence bucketing to train faster and fit more networks into the two hours. The winning team of the quora competition successfully used sequence bucketing to drastically reduce the time it took to train RNNs. An excerpt from their [solution summary](https://www.kaggle.com/c/quora-insincere-questions-classification/discussion/80568#latest-487092):
-
 #
 # > We aimed at combining as many models as possible. To do this, we needed to improve runtime and the most important thing to achieve this was the following. We do not pad sequences to the same length based on the whole data, but just on a batch level. That means we conduct padding and truncation on the data generator level for each batch separately, so that length of the sentences in a batch can vary in size. Additionally, we further improved this by not truncating based on the length of the longest sequence in the batch, but based on the 95% percentile of lengths within the sequence. This improved runtime heavily and kept accuracy quite robust on single model level, and improved it by being able to average more models.
 #
 # - Try a (weighted) average of embeddings instead of concatenating them. A 600d vector for each word is a lot, it might work better to average them instead. See [this paper](https://www.aclweb.org/anthology/N18-2031) for why this even works.
 # - Limit the maximum number of words used to train the NN. At the moment, there is no limit set to the maximum number of words in the tokenizer, so we use every word that occurs in the training data, even if it is only mentioned once. This could lead to overfitting so it might be better to limit the maximum number of words to e. g. 100k.
 #
-
 # Thanks for reading. Good luck and have fun in this competition!
